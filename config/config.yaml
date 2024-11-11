@@ -1,0 +1,14 @@
+model:
+  name: mobilenet_v2
+  num_classes: 3
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  labels_dir: data/labels
+  augmented_dir: data/augmented
+training:
+  epochs: 100
+  batch_size: 8
+  img_size: 224
+  workers: 4
+  device: cpu
