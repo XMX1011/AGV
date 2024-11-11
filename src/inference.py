@@ -7,6 +7,14 @@ from ultralytics import YOLO
 from config import config
 from src.utils import preprocess_image, subpixel_interpolation, multi_frame_fusion
 
+# src/inference.py
+import cv2
+import numpy as np
+import torch
+from ultralytics import YOLO
+from config import config
+from src.utils import preprocess_image, subpixel_interpolation, multi_frame_fusion
+
 def find_nearest_pairs(bolts, holes):
     pairs = []
     for bolt in bolts:
@@ -17,7 +25,7 @@ def find_nearest_pairs(bolts, holes):
             if dist < min_dist:
                 min_dist = dist
                 nearest_hole = hole
-        pairs.append((bolt, nearest_hole))
+        pairs.append((bolt, nearest_hole, min_dist))
     return pairs
 
 def draw_annotations(image, bolts, holes, pairs, show_pairs=False):
@@ -26,8 +34,18 @@ def draw_annotations(image, bolts, holes, pairs, show_pairs=False):
     for hole in holes:
         cv2.circle(image, tuple(map(int, hole)), 5, (0, 255, 0), -1)  # 绿色圆圈表示安装孔
     if show_pairs:
-        for bolt, hole in pairs:
+        for bolt, hole, _ in pairs:
             cv2.line(image, tuple(map(int, bolt)), tuple(map(int, hole)), (255, 0, 0), 2)  # 蓝色线条连接螺栓和安装孔
+
+def check_alignment(pairs, threshold=10):
+    aligned_pairs = []
+    unaligned_pairs = []
+    for bolt, hole, distance in pairs:
+        if distance <= threshold:
+            aligned_pairs.append((bolt, hole))
+        else:
+            unaligned_pairs.append((bolt, hole))
+    return aligned_pairs, unaligned_pairs
 
 def run_inference(model_path, config):
     model = YOLO(model_path)
@@ -83,6 +101,18 @@ def run_inference(model_path, config):
                 holes.append((x_center_subpixel, y_center_subpixel))
 
         pairs = find_nearest_pairs(bolts, holes)
+        aligned_pairs, unaligned_pairs = check_alignment(pairs, threshold=10)
+
+        # 输出对齐信息
+        if aligned_pairs:
+            print("Aligned Pairs:")
+            for bolt, hole in aligned_pairs:
+                print(f"Bolt at {bolt} aligned with Hole at {hole}")
+        if unaligned_pairs:
+            print("Unaligned Pairs:")
+            for bolt, hole in unaligned_pairs:
+                print(f"Bolt at {bolt} not aligned with Hole at {hole}")
+
         draw_annotations(fused_frame, bolts, holes, pairs, show_pairs)
 
         # 显示图像
