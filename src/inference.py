@@ -74,34 +74,35 @@ def run_inference(model_path, config):
         if not ret:
             print("Error: Could not read frame.")
             break 
+        
         frames.append(frame)
         if len(frames) > 5:
             frames.pop(0)
+        # 多帧融合
         fused_frame = multi_frame_fusion(frames)
         preprocessed_frame = preprocess_image(fused_frame)
         input_tensor = transform(preprocessed_frame).unsqueeze(0).to(config['device'])
         
+        # 预测
         with torch.no_grad():
             output = model(input_tensor)
             _, predicted = torch.max(output, 1)
             predicted_class = class_names[predicted.item()]
         
         
-
-
         predictions = []
 
         bolts = []
         holes = []
         
         if predicted_class == 1:
-            x1, y1, x2, y2, conf, cls = predictions[0]
+            x1, y1, x2, y2 = predictions[0]
             x_center, y_center = (x1 + x2) / 2, (y1 + y2) / 2
             x_center_subpixel = subpixel_interpolation(fused_frame, x_center, y_center)
             y_center_subpixel = subpixel_interpolation(fused_frame, y_center, x_center)
             bolts.append((x_center_subpixel, y_center_subpixel))
         elif predicted_class == 2:
-            x1, y1, x2, y2, conf, cls = predictions[0]
+            x1, y1, x2, y2 = predictions[0]
             x_center, y_center = (x1 + x2) / 2, (y1 + y2) / 2
             x_center_subpixel = subpixel_interpolation(fused_frame, x_center, y_center)
             y_center_subpixel = subpixel_interpolation(fused_frame, y_center, x_center)
@@ -110,11 +111,13 @@ def run_inference(model_path, config):
         pairs = find_nearest_pairs(bolts, holes)
         aligned_pairs, unaligned_pairs = check_alignment(pairs, threshold=10)
 
+        # 打印配对信息
         if aligned_pairs:
             print("Aligned pairs:", aligned_pairs)
         if unaligned_pairs:
-            print("Unaligned pairs:", unaligned_pairs)
+            print("Not Aligned")
         
+        # 绘制标注
         draw_annotations(fused_frame, bolts, holes, pairs, show_pairs=show_pairs)
         
         # 显示图像
