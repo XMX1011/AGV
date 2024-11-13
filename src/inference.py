@@ -73,9 +73,12 @@ def run_inference(model_path, config):
         ret, frame = cap.read()
         if not ret:
             print("Error: Could not read frame.")
-            break
-        
-        preprocessed_frame = preprocess_image(frame)
+            break 
+        frames.append(frame)
+        if len(frames) > 5:
+            frames.pop(0)
+        fused_frame = multi_frame_fusion(frames)
+        preprocessed_frame = preprocess_image(fused_frame)
         input_tensor = transform(preprocessed_frame).unsqueeze(0).to(config['device'])
         
         with torch.no_grad():
@@ -83,50 +86,37 @@ def run_inference(model_path, config):
             _, predicted = torch.max(output, 1)
             predicted_class = class_names[predicted.item()]
         
-        frames.append(frame)
-        if len(frames) > 5:
-            frames.pop(0)
         
-        fused_frame = multi_frame_fusion(frames)
-        preprocessed_frame = preprocess_image(fused_frame)
-        frame_resized = cv2.resize(preprocessed_frame, (224, 224))
-        frame_normalized = frame_resized / 255.0
-        frame_transposed = frame_normalized.transpose((2, 0, 1)).astype(np.float32)
 
-        # 进行推理
-        results = model(frame_resized)
-        predictions = results[0].boxes.data.cpu().numpy()
+
+        predictions = []
 
         bolts = []
         holes = []
-
-        for pred in predictions:
-            x1, y1, x2, y2, conf, cls = pred
+        
+        if predicted_class == 1:
+            x1, y1, x2, y2, conf, cls = predictions[0]
             x_center, y_center = (x1 + x2) / 2, (y1 + y2) / 2
-            x_center_subpixel = subpixel_interpolation(frame_resized, x_center, y_center)
-            y_center_subpixel = subpixel_interpolation(frame_resized, y_center, x_center)
-
-            # 绘制检测框和标签
-            cv2.rectangle(fused_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            result_label = f"{class_names[int(cls)]}: {conf:.2f}"
-            cv2.putText(fused_frame, result_label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-            if class_names[int(cls)] == 'nuts_removed':
-                bolts.append((x_center_subpixel, y_center_subpixel))
-            elif class_names[int(cls)] == 'holes_aligned':
-                holes.append((x_center_subpixel, y_center_subpixel))
-
+            x_center_subpixel = subpixel_interpolation(fused_frame, x_center, y_center)
+            y_center_subpixel = subpixel_interpolation(fused_frame, y_center, x_center)
+            bolts.append((x_center_subpixel, y_center_subpixel))
+        elif predicted_class == 2:
+            x1, y1, x2, y2, conf, cls = predictions[0]
+            x_center, y_center = (x1 + x2) / 2, (y1 + y2) / 2
+            x_center_subpixel = subpixel_interpolation(fused_frame, x_center, y_center)
+            y_center_subpixel = subpixel_interpolation(fused_frame, y_center, x_center)
+            holes.append((x_center_subpixel, y_center_subpixel))
+        
         pairs = find_nearest_pairs(bolts, holes)
         aligned_pairs, unaligned_pairs = check_alignment(pairs, threshold=10)
 
-        # 输出对齐信息,TODO:应该是全部对齐才算成功
         if aligned_pairs:
-            print("Aligned Pairs:")
+            print("Aligned pairs:", aligned_pairs)
         if unaligned_pairs:
-            print("Unaligned Pairs:")
-
-        draw_annotations(fused_frame, bolts, holes, pairs, show_pairs)
-
+            print("Unaligned pairs:", unaligned_pairs)
+        
+        draw_annotations(fused_frame, bolts, holes, pairs, show_pairs=show_pairs)
+        
         # 显示图像
         cv2.imshow('Frame', fused_frame)
 
