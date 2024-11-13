@@ -12,3 +12,4 @@ training:
   img_size: 224
   workers: 4
   device: cpu
+  lr: 0.001

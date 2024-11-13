@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 import torch
+import json
 
 def preprocess_image(image):
     # 去噪
@@ -15,19 +16,23 @@ def preprocess_image(image):
     return image
 
 def subpixel_interpolation(image, x, y):
-    px, py = int(x), int(y)
-    dx, dy = x - px, y - py
-    if px + 1 < image.shape[1] and py + 1 < image.shape[0]:
-        value = (1 - dx) * (1 - dy) * image[py, px] + \
-                dx * (1 - dy) * image[py, px + 1] + \
-                (1 - dx) * dy * image[py + 1, px] + \
-                dx * dy * image[py + 1, px + 1]
-    else:
-        value = image[py, px]
-    return value
+    x_int, y_int = int(x), int(y)
+    dx, dy = x - x_int, y - y_int
+    if dx<0 or dx>=1 or dy<0 or dy>=1:
+        return x, y
+    if x_int +1 >= image.shape[1] and y_int +1 >= image.shape[0]:
+        return x, y
+    
+    q11 = image[y_int, x_int]
+    q21 = image[y_int, x_int+1]
+    q12 = image[y_int+1, x_int]
+    q22 = image[y_int+1, x_int+1]
+    
+    interpolated_value = (q11*(1-dx)*(1-dy) + q21*dx*(1-dy) + q12*(1-dx)*dy + q22*dx*dy)
+    return interpolated_value
 
 def multi_frame_fusion(frames):
-    fused_frame = np.mean(frames, axis=0)
+    fused_frame = np.mean(frames, axis=0).astype(np.uint8)
     return fused_frame
 
 def train_one_epoch(model, train_loader, optimizer, criterion, device):

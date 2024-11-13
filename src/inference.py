@@ -3,17 +3,19 @@ import cv2
 import numpy as np
 import torch
 import yaml
+import json
+import torchvision.transforms as transforms
 from ultralytics import YOLO
 from config import config
 from src.utils import preprocess_image, subpixel_interpolation, multi_frame_fusion
+from src.model import BoltHoleModel
 
-# src/inference.py
-import cv2
-import numpy as np
-import torch
-from ultralytics import YOLO
-from config import config
-from src.utils import preprocess_image, subpixel_interpolation, multi_frame_fusion
+
+def load_model(model_path, config):
+    model = BoltHoleModel(num_classes=config['num_classes'].to(config['device']))
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    return model
 
 def find_nearest_pairs(bolts, holes):
     pairs = []
@@ -30,12 +32,12 @@ def find_nearest_pairs(bolts, holes):
 
 def draw_annotations(image, bolts, holes, pairs, show_pairs=False):
     for bolt in bolts:
-        cv2.circle(image, tuple(map(int, bolt)), 5, (0, 0, 255), -1)  # 红色圆圈表示螺栓
+        cv2.point(image, tuple(map(int, bolt)), 5, (0, 255, 0), -1)  # 绿色表示螺栓
     for hole in holes:
-        cv2.circle(image, tuple(map(int, hole)), 5, (0, 255, 0), -1)  # 绿色圆圈表示安装孔
+        cv2.circle(image, tuple(map(int, hole)), 5, (0, 0, 255), -1)  # 红色表示安装孔
     if show_pairs:
         for bolt, hole, _ in pairs:
-            cv2.line(image, tuple(map(int, bolt)), tuple(map(int, hole)), (255, 0, 0), 2)  # 蓝色线条连接螺栓和安装孔
+            cv2.dottedLine(image, tuple(map(int, bolt)), tuple(map(int, hole)), (255, 0, 0), 2)  # 蓝色虚线连接螺栓和安装孔
 
 def check_alignment(pairs, threshold=10):
     aligned_pairs = []
@@ -48,13 +50,19 @@ def check_alignment(pairs, threshold=10):
     return aligned_pairs, unaligned_pairs
 
 def run_inference(model_path, config):
-    model = YOLO(model_path)
+    model = load_model(model_path, config)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Error: Could not open video device.")
         exit()
 
-    class_names = ['nuts_not_removed', 'nuts_removed', 'holes_aligned']
+    # 未拆完、拆完未对齐、拆完已对齐
+    class_names = ['not_removed', 'removed_not_aligned', 'removed_aligned']
+    transform = transforms.Compose([
+            transforms.resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
     frames = []
     bolts = []
     holes = []
@@ -66,6 +74,14 @@ def run_inference(model_path, config):
         if not ret:
             print("Error: Could not read frame.")
             break
+        
+        preprocessed_frame = preprocess_image(frame)
+        input_tensor = transform(preprocessed_frame).unsqueeze(0).to(config['device'])
+        
+        with torch.no_grad():
+            output = model(input_tensor)
+            _, predicted = torch.max(output, 1)
+            predicted_class = class_names[predicted.item()]
         
         frames.append(frame)
         if len(frames) > 5:
@@ -103,15 +119,11 @@ def run_inference(model_path, config):
         pairs = find_nearest_pairs(bolts, holes)
         aligned_pairs, unaligned_pairs = check_alignment(pairs, threshold=10)
 
-        # 输出对齐信息
+        # 输出对齐信息,TODO:应该是全部对齐才算成功
         if aligned_pairs:
             print("Aligned Pairs:")
-            for bolt, hole in aligned_pairs:
-                print(f"Bolt at {bolt} aligned with Hole at {hole}")
         if unaligned_pairs:
             print("Unaligned Pairs:")
-            for bolt, hole in unaligned_pairs:
-                print(f"Bolt at {bolt} not aligned with Hole at {hole}")
 
         draw_annotations(fused_frame, bolts, holes, pairs, show_pairs)
 
