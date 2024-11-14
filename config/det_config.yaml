@@ -1,0 +1,15 @@
+model:
+  name: mobilenet_v3
+  num_classes: 2
+data:
+  raw_dir: data/detection/raw
+  processed_dir: data/detection/processed
+  labels_dir: data/detection/labels
+  augmented_dir: data/detection/augmented
+training:
+  epochs: 100
+  batch_size: 8
+  img_size: 640
+  workers: 4
+  device: cpu
+  lr: 0.001
