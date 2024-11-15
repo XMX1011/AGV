@@ -131,7 +131,7 @@ def data_split():
         cv2.imwrite(os.path.join(test_data_path, file_name), img)
 
 if __name__ == '__main__':
-    collect_data()
+    # collect_data()
     data_annotation()
     data_augmentation()
     data_split()
