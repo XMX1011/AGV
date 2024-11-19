@@ -16,3 +16,19 @@
 # 使用目标定位算法定位车轴相对相机位置以及螺栓相对垂直过车轴圆心的直线的夹角
 
 # 考虑是否分两步，远距离时候使用粗对齐，近距离时候使用精对齐
+
+from rough_alignment import align_to_vehicle
+from precise_alignment import traditionalCV,dl_yolov8
+
+distance_to_vehicle = 1000 # mm
+# 使用激光测距判断摄像头与车轴的距离
+# 实时变化
+def distance_to_camera(distance_to_vehicle):
+    pass
+
+def main():
+    if distance_to_camera(distance_to_vehicle) < 900:
+        align_to_vehicle()
+    elif distance_to_camera(distance_to_vehicle) < 600:
+        # traditionalCV(distance_to_vehicle)
+        dl_yolov8()

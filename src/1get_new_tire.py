@@ -22,12 +22,13 @@ def tire_is_flat():
     pass
 def alert():
     pass
-def signal_tire_up():
+def signal_grapple_up():
     pass
 
 if __name__ == '__main__':
     if not tire_is_flat():
         alert()
-    align_to_rack()
-    # 爪抬起信号
-    signal_tire_up()
+    aligned = align_to_rack()
+    # # 爪抬起信号
+    # if aligned :
+    #     signal_grapple_up()
