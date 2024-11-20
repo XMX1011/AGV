@@ -33,7 +33,7 @@ transform = transforms.Compose([
 
 input_tensor = transform(image_blurred).unsqueeze(0)
 
-# 加载预训练模型，不过我觉得还是自己搞一套数据集自己训效果能好点，先写吧
+# 加载预训练模型
 model = mobilenet_v3_small(pretrained=True)
 # 修改最后一层的输出层为二分类
 model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, 2)

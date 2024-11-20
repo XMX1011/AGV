@@ -20,6 +20,7 @@
 from rough_alignment import align_to_vehicle
 from precise_alignment import traditionalCV,dl_yolov8
 
+# ! pixels和实际距离的对应关系需要实时计算
 distance_to_vehicle = 1000 # mm
 # 使用激光测距判断摄像头与车轴的距离
 # 实时变化

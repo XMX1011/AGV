@@ -28,7 +28,7 @@ def signal_grapple_up():
 if __name__ == '__main__':
     if not tire_is_flat():
         alert()
-    aligned = align_to_rack()
+    aligned = align_to_rack.align_to_rack_AKAZE()
     # # 爪抬起信号
     # if aligned :
     #     signal_grapple_up()
