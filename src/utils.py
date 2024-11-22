@@ -68,3 +68,15 @@ def validate(model, val_loader, criterion, device):
 
     avg_loss = running_loss / len(val_loader)
     print(f"Validation Loss: {avg_loss:.4f}")
+
+def alert(message):
+    # 结合蜂鸣器或者别的什么弹窗进行报警
+    print(message)
+    
+def grapple_up():
+    # 结合机械臂进行抓取后抬起
+    print("Grapple up")
+
+def grapple_down():
+    # 结合机械臂进行抓取后放下
+    print("Grapple down")

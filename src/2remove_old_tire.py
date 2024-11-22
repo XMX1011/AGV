@@ -15,3 +15,18 @@
 
 from rough_alignment import align_to_vehicle
 from nut_detection import ND_mobilenetv3,ND_trad
+from utils import get_distance, get_pitch_angle, get_yaw_angle, get_roll_angle,alert
+
+
+def pitch_adjustment():
+    # 根据激光测距调整俯仰角度
+    pitch_angel = get_pitch_angle()
+    pass
+
+if __name__ == "__main__":
+    if not ND_mobilenetv3():
+        alert()
+    if align_to_vehicle():
+        print("对齐成功")
+    else:
+        print("未对齐，需要重新对齐")

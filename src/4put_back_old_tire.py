@@ -9,8 +9,14 @@
 
 from rough_alignment import align_to_rack
 def signal_grapple_up():
+    # 距离轮胎架大概胎宽距离的时候给出一个向上抬极短距离的信号，方便放下轮胎
+    if distance_to_rack() < 10:
+        pass
     pass
 def signal_grapple_down():
+    # 距离轮胎架距离接近到能放下去时给出信号
+    if distance_to_rack() < 5:
+        pass
     pass
 
 def distance_to_rack():
