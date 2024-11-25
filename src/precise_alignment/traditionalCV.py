@@ -71,7 +71,7 @@ def roll_angle(input_image_path,compared_image):
                 direction = 'counterclockwise'
                 rotation_angle = 360 - angle_diff
             else:
-                direction = 'clockwise'
+                direction = 'clockwise'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
                 rotation_angle = angle_diff
         
         # 输出旋转方向和角度
