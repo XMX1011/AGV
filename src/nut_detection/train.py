@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 from torchvision import datasets
-
+import tensorrt as trt
 
 def train(config_path):
     with open(config_path, 'r') as f:
@@ -47,6 +47,23 @@ def train(config_path):
         os.makedirs('models')
     torch.save(model.state_dict(), os.path.join('models', 'nut_detection.pth'))
     print('Model saved!')
+    # 导出onnx模型
+    dummy_input = torch.randn(1, 3, 640, 640)
+    torch.onnx.export(model, dummy_input, os.path.join('models', 'nut_detection.onnx'), verbose=True)
+    print('ONNX model exported!')
+    # 导出tensorRT模型
+    model_trt = torch.jit.load(os.path.join('models', 'nut_detection.pth'))
+    model_trt = model_trt.to(device)
+    model_trt.eval()
+    x = torch.randn(1, 3, 640, 640).to(device)
+    model_trt_path = os.path.join('models', 'nut_detection_trt.pth')
+    torch.save(model_trt.state_dict(), model_trt_path)
+    model_trt.to(device)
+    model_trt.eval()
+    model_trt = torch.jit.trace(model_trt, x)
+    model_trt.save(model_trt_path)
+    print('TensorRT model exported!')
+    
 
 if __name__ == '__main__':
     train('config/det_config.yaml')
