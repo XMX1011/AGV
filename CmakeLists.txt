@@ -1,0 +1,29 @@
+cmake_minimum_required(VERSION 3.10)
+project(AP)
+
+# 设置C++标准
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 指定OpenCV路径并查找包
+set(OpenCV_DIR "C:/dev/opencv411/opencv/build")
+find_package(OpenCV)  
+
+# 定义源文件
+set(SOURCES
+    src/axle_locator.cpp
+    src/main.cpp
+)
+
+# 创建可执行文件
+add_executable(AP ${SOURCES})
+
+# 设置包含目录（针对目标）
+target_include_directories(AP PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${OpenCV_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# 链接OpenCV库
+target_link_libraries(AP PRIVATE ${OpenCV_LIBS})
