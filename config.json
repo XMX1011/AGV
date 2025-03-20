@@ -1,0 +1,54 @@
+{
+    "coarse_config": {
+        "camera_matrix": [
+            640,
+            0,
+            320,
+            0,
+            480,
+            240,
+            0,
+            0,
+            1
+        ],
+        "camera_offset": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "laser_offset": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "max_distance": 1.0
+    },
+    "fine_config": {
+        "camera_matrix": [
+            640,
+            0,
+            320,
+            0,
+            480,
+            240,
+            0,
+            0,
+            1
+        ],
+        "camera_offset": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "gripper_offset": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "min_distance": 0.3
+    },
+    "laser_values": {
+        "coarse_z": 1.0,
+        "fine_z": 0.3
+    }
+}

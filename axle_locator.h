@@ -48,6 +48,9 @@ namespace AxleLocator
         // 输出标记参数
         int markerSize = 20;         // 标记大小
         bool drawCoordinates = true; // 是否绘制坐标文本
+
+        // 缩放参数
+        double scaleFactor = 0.4; // 缩放因子
     };
 
     /**

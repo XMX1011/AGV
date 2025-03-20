@@ -1,3 +1,4 @@
+#if 0
 #include "axle_locator.h"
 #include <iostream>
 
@@ -466,3 +467,416 @@ namespace AxleLocator
         return result;
     }
 }
+#endif
+
+#if 1
+#include "axle_locator.h"
+#include <iostream>
+
+namespace AxleLocator
+{
+
+    namespace
+    {
+
+        /**
+         * @brief 图像预处理
+         * @param image 输入图像
+         * @param hasTire 是否有轮胎
+         * @param config 配置参数
+         * @return 预处理后的图像
+         */
+        cv::Mat preprocessImage(const cv::Mat &image, bool hasTire, const LocatorConfig &config)
+        {
+            cv::Mat result;
+
+            // 转为灰度图
+            if (image.channels() > 1)
+            {
+                cv::cvtColor(image, result, cv::COLOR_BGR2GRAY);
+            }
+            else
+            {
+                image.copyTo(result);
+            }
+
+            // 高斯模糊去噪
+            if (config.blurKernelSize > 0)
+            {
+                cv::GaussianBlur(result, result, cv::Size(config.blurKernelSize, config.blurKernelSize), 0);
+            }
+
+            // 中值滤波 + 均值滤波混合处理
+            cv::medianBlur(result, result, 5);
+            cv::blur(result, result, cv::Size(3, 3));
+
+            // 应用拉普拉斯算子
+            cv::Mat laplacian;
+            cv::Laplacian(result, laplacian, CV_16S, 3);
+            cv::convertScaleAbs(laplacian, laplacian);
+            cv::addWeighted(result, 1.5, laplacian, -0.5, 0, result);
+
+            // 根据是否有轮胎调整预处理参数
+            if (hasTire)
+            {
+                if (config.enhanceContrast)
+                {
+                    cv::normalize(result, result, 0, 255, cv::NORM_MINMAX);
+                }
+            }
+            else
+            {
+                // 局部自适应阈值处理
+                cv::adaptiveThreshold(result, result, 255,
+                                      cv::ADAPTIVE_THRESH_GAUSSIAN_C,
+                                      cv::THRESH_BINARY_INV, 15, 2);
+
+                // 形态学操作去除小噪点
+                int morphSize = 2;
+                cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE,
+                                                            cv::Size(2 * morphSize + 1, 2 * morphSize + 1));
+                cv::morphologyEx(result, result, cv::MORPH_OPEN, element);
+            }
+
+            return result;
+        }
+
+        /**
+         * @brief 检测圆形
+         * @param image 输入图像
+         * @param config 配置参数
+         * @return 检测到的圆形向量
+         */
+        std::vector<cv::Vec3f> detectCircles(const cv::Mat &image, const LocatorConfig &config)
+        {
+            std::vector<cv::Vec3f> circles;
+
+            cv::Mat enhancedImage = image.clone();
+            if (config.detectHubSpecifically)
+            {
+                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+                clahe->apply(enhancedImage, enhancedImage);
+            }
+
+            cv::HoughCircles(enhancedImage, circles, cv::HOUGH_GRADIENT_ALT, config.dp, image.rows / 10, 300, 0.75, config.minRadius, config.maxRadius);
+            return circles;
+        }
+
+        /**
+         * @brief 检测椭圆
+         * @param image 输入图像
+         * @param config 配置参数
+         * @return 检测到的椭圆向量
+         */
+        std::vector<cv::RotatedRect> detectEllipses(const cv::Mat &image, const LocatorConfig &config)
+        {
+            std::vector<cv::RotatedRect> ellipses;
+
+            // 查找轮廓
+            std::vector<std::vector<cv::Point>> contours;
+            cv::findContours(image, contours, cv::RETR_LIST, cv::CHAIN_APPROX_SIMPLE);
+
+            // 对每个轮廓拟合椭圆
+            for (const auto &contour : contours)
+            {
+                if (cv::contourArea(contour) < config.minContourArea || contour.size() < 5)
+                {
+                    continue;
+                }
+
+                cv::RotatedRect ellipse = cv::fitEllipse(contour);
+                float radius = (ellipse.size.width + ellipse.size.height) / 4.0;
+                if (radius >= config.minRadius && radius <= config.maxRadius)
+                {
+                    ellipses.push_back(ellipse);
+                }
+            }
+
+            return ellipses;
+        }
+
+        /**
+         * @brief 标记轴心位置
+         * @param image 结果图像
+         * @param center 轴心坐标
+         * @param config 配置参数
+         */
+        void markAxleCenter(cv::Mat &image, const cv::Point2f &center, const LocatorConfig &config)
+        {
+            cv::line(image, cv::Point(center.x - config.markerSize, center.y),
+                     cv::Point(center.x + config.markerSize, center.y), cv::Scalar(0, 0, 255), 2);
+            cv::line(image, cv::Point(center.x, center.y - config.markerSize),
+                     cv::Point(center.x, center.y + config.markerSize), cv::Scalar(0, 0, 255), 2);
+            cv::circle(image, center, 3, cv::Scalar(0, 0, 255), -1);
+
+            if (config.drawCoordinates)
+            {
+                std::string text = "(" + std::to_string(int(center.x)) + ", " +
+                                   std::to_string(int(center.y)) + ")";
+                cv::putText(image, text, cv::Point(center.x + 10, center.y - 10),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1);
+            }
+        }
+
+    }
+
+    AxleResult locateAxleWithTire(const cv::Mat &image, const LocatorConfig &config)
+    {
+        AxleResult result;
+        result.success = false;
+
+        if (image.empty())
+        {
+            result.message = "Empty input image";
+            return result;
+        }
+
+        // 缩放图像以提高性能
+        double scale = config.scaleFactor > 0 ? config.scaleFactor : 1.0;
+        cv::Mat resizedImage;
+        cv::resize(image, resizedImage, cv::Size(), scale, scale);
+
+        // 预处理图像
+        cv::Mat processedImage = preprocessImage(resizedImage, true, config);
+
+        // 边缘检测
+        cv::Mat edges;
+        cv::Canny(processedImage, edges, config.cannyThreshold1, config.cannyThreshold2);
+
+        // 寻找圆形
+        std::vector<cv::Vec3f> circles = detectCircles(processedImage, config);
+
+        if (!circles.empty())
+        {
+            cv::Vec3f tireCircle = circles[0];
+            cv::Vec3f hubCircle = circles[0];
+
+            for (const auto &circle : circles)
+            {
+                if (circle[2] > hubCircle[2])
+                {
+                    hubCircle = circle;
+                }
+            }
+
+            if (config.detectHubSpecifically && circles.size() > 1)
+            {
+                for (const auto &circle : circles)
+                {
+                    if (circle[2] < tireCircle[2] / config.hubRadiusRatio * 1.5 &&
+                        circle[2] > tireCircle[2] / config.hubRadiusRatio * 0.5)
+                    {
+                        float dx = circle[0] - tireCircle[0];
+                        float dy = circle[1] - tireCircle[1];
+                        float distance = std::sqrt(dx * dx + dy * dy);
+                        if (distance < tireCircle[2] * 0.5)
+                        {
+                            hubCircle = circle;
+                            result.center = cv::Point2f(hubCircle[0], hubCircle[1]) / scale;
+                            result.success = true;
+                            result.message = "Axle center located using hub circle detection";
+                            result.debug["tire_circle"] = tireCircle;
+                            result.debug["hub_circle"] = hubCircle;
+                            image.copyTo(result.resultImage);
+                            markAxleCenter(result.resultImage, result.center, config);
+                            return result;
+                        }
+                    }
+                }
+            }
+
+            result.center = cv::Point2f(tireCircle[0], tireCircle[1]) / scale;
+            result.success = true;
+            result.message = "Axle center located using tire circle detection";
+
+            image.copyTo(result.resultImage);
+            markAxleCenter(result.resultImage, result.center, config);
+            return result;
+        }
+
+        // 如果没有找到圆形，尝试寻找椭圆
+        std::vector<cv::RotatedRect> ellipses = detectEllipses(edges, config);
+
+        if (!ellipses.empty())
+        {
+            cv::RotatedRect largestEllipse = ellipses[0];
+            for (const auto &ellipse : ellipses)
+            {
+                if (ellipse.size.area() > largestEllipse.size.area())
+                {
+                    largestEllipse = ellipse;
+                }
+            }
+
+            result.center = largestEllipse.center / scale;
+            result.success = true;
+            result.message = "Axle center located using ellipse detection";
+
+            image.copyTo(result.resultImage);
+            markAxleCenter(result.resultImage, result.center, config);
+            return result;
+        }
+
+        // 如果没有找到圆形或椭圆，返回图像中心
+        result.center = cv::Point2f(image.cols / 2.0f, image.rows / 2.0f);
+        result.message = "Fallback to image center - no circles or ellipses detected";
+
+        image.copyTo(result.resultImage);
+        markAxleCenter(result.resultImage, result.center, config);
+        return result;
+    }
+
+    AxleResult locateAxleWithoutTire(const cv::Mat &image, const LocatorConfig &config)
+    {
+        AxleResult result;
+        result.success = false;
+
+        if (image.empty())
+        {
+            result.message = "Empty input image";
+            return result;
+        }
+
+        // 缩放图像以提高性能
+        double scale = config.scaleFactor > 0 ? config.scaleFactor : 1.0;
+        cv::Mat resizedImage;
+        cv::resize(image, resizedImage, cv::Size(), scale, scale);
+
+        // 预处理图像
+        cv::Mat processedImage = preprocessImage(resizedImage, false, config);
+
+        // 轮廓检测
+        std::vector<std::vector<cv::Point>> contours;
+        cv::findContours(processedImage, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+        if (contours.empty())
+        {
+            result.center = cv::Point2f(image.cols / 2.0f, image.rows / 2.0f);
+            result.message = "Fallback to image center - no contours detected";
+
+            image.copyTo(result.resultImage);
+            markAxleCenter(result.resultImage, result.center, config);
+            return result;
+        }
+
+        // 寻找最大的轮廓
+        int largestContourIdx = 0;
+        double largestArea = 0;
+        for (int i = 0; i < contours.size(); i++)
+        {
+            double area = cv::contourArea(contours[i]);
+            if (area > largestArea)
+            {
+                largestArea = area;
+                largestContourIdx = i;
+            }
+        }
+
+        // 拟合椭圆或圆形
+        if (contours[largestContourIdx].size() >= 5)
+        {
+            cv::RotatedRect ellipse = cv::fitEllipse(contours[largestContourIdx]);
+
+            result.center = ellipse.center / scale;
+            result.success = true;
+            result.message = "Axle center located using ellipse fitting";
+
+            image.copyTo(result.resultImage);
+            markAxleCenter(result.resultImage, result.center, config);
+            return result;
+        }
+
+        // 如果不能拟合椭圆，使用轮廓的中心矩
+        cv::Moments mu = cv::moments(contours[largestContourIdx]);
+        if (mu.m00 != 0)
+        {
+            result.center = cv::Point2f(mu.m10 / mu.m00, mu.m01 / mu.m00) / scale;
+            result.success = true;
+            result.message = "Axle center located using contour moments";
+        }
+        else
+        {
+            result.center = cv::Point2f(image.cols / 2.0f, image.rows / 2.0f);
+            result.message = "Fallback to image center - moment calculation failed";
+        }
+
+        image.copyTo(result.resultImage);
+        markAxleCenter(result.resultImage, result.center, config);
+        return result;
+    }
+
+    AxleResult locateAxleMultiStage(const cv::Mat &image, bool hasTire, const LocatorConfig &config)
+    {
+        AxleResult result;
+
+        // 步骤1：标准处理
+        result = hasTire ? locateAxleWithTire(image, config) : locateAxleWithoutTire(image, config);
+
+        if (!result.success)
+        {
+            return result;
+        }
+
+        // 步骤2：获取感兴趣区域(ROI)进行精细处理
+        cv::Point2f initialCenter = result.center;
+        int roiSize = hasTire ? static_cast<int>(config.minRadius * 3) : static_cast<int>(config.minRadius * 2);
+
+        int x = std::max(0, static_cast<int>(initialCenter.x - roiSize / 2));
+        int y = std::max(0, static_cast<int>(initialCenter.y - roiSize / 2));
+        int width = std::min(image.cols - x, roiSize);
+        int height = std::min(image.rows - y, roiSize);
+
+        if (width > 20 && height > 20)
+        {
+            cv::Rect roi(x, y, width, height);
+            cv::Mat roiImage = image(roi);
+
+            LocatorConfig roiConfig = config;
+            roiConfig.minRadius = config.minRadius / 2;
+            roiConfig.maxRadius = config.minRadius * 2;
+
+            AxleResult roiResult;
+            if (hasTire)
+            {
+                roiConfig.detectHubSpecifically = true;
+                roiResult = locateAxleWithTire(roiImage, roiConfig);
+            }
+            else
+            {
+                roiResult = locateAxleWithoutTire(roiImage, roiConfig);
+            }
+
+            if (roiResult.success)
+            {
+                result.center = cv::Point2f(roiResult.center.x + x, roiResult.center.y + y);
+                result.message = "Refined axle center using ROI processing";
+
+                image.copyTo(result.resultImage);
+                markAxleCenter(result.resultImage, result.center, config);
+            }
+        }
+
+        return result;
+    }
+
+    bool saveResultImage(const AxleResult &result, const std::string &filename)
+    {
+        if (result.resultImage.empty())
+        {
+            std::cerr << "Error: Empty result image" << std::endl;
+            return false;
+        }
+
+        try
+        {
+            cv::imwrite(filename, result.resultImage);
+            return true;
+        }
+        catch (const cv::Exception &ex)
+        {
+            std::cerr << "Error saving image: " << ex.what() << std::endl;
+            return false;
+        }
+    }
+}
+#endif
